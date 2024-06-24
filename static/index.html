@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- <title>Графический редактор с клавиатурой</title> -->
+
+    <title>Neural Network Training</title>
+    <!-- Подключение Bootstrap CSS -->
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.2/css/all.min.css" />
+    <link rel="stylesheet" href="static/css/styles.css"> <!-- Подключение внешнего CSS-файла -->
+</head>
+<body>
+
+    <!-- Модальное окно -->
+    <div class="modal fade" id="confirmModal" tabindex="-1" aria-labelledby="confirmModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="confirmModalLabel">Подтверждение</h5>
+                    <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+                        <span aria-hidden="true">&times;</span>
+                    </button>
+                </div>
+                <div class="modal-body">
+                    Обучение нейросети займет около 15-20 минут. Если вы хотите дополнить датасет без обучения - нарисуйте букву, и нажмите соответствующую ей кнопку. Если вы дополнили датасет своими картинками или наполнили его новыми, или изменили число классов, можно провести обучение. Пока сеть будет обучаться, вы можете дополнить датасет новыми буквами для следующего обучения. Но пока сеть обучается, она не сможет распознавать ваши буквы. Вы уверены, что хотите заново переобучить сеть?
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Отмена</button>
+                    <button type="button" class="btn btn-primary" id="confirmButton">Продолжить</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="editor-container">
+            <canvas id="editor" width="224" height="224"></canvas>
+            <div class="button-container">
+                <button id="trainButton">Обучить</button>                
+                <button id="clearButton">Очистить</button>
+                <button id="checkLetterButton">Распознать</button>    
+                <button id="guessResultLetterButton">Значение</button>                   
+            </div>
+            <div class="keyboard-container" id="keyboardContainer"></div>
+        </div>
+        <div class="file-list-container">
+            <div class="file-list">
+                <h3>Список папок</h3>
+                <ul id="fileListContent"></ul>
+                <button id="deleteButton" class="delete-button">Удалить</button>
+                <button id="deleteAllButton" class="delete-all-button">Удалить всё</button>
+            </div>
+            <div class="file-contents">
+                <h3>Содержимое папки</h3>
+                <ul id="folderContents"></ul>
+                <button id="deleteButtonFiles" class="delete-button">Удалить</button>
+                <button id="deleteAllButtonFiles" class="delete-all-button">Удалить всё</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Подключение JavaScript файла (путь к файлу в папке js) -->
+    <script src="static/js/script.js"></script>   
+
+    <!-- Подключение Bootstrap JS и jQuery -->
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.5.2/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+
+    <script>
+        const canvas = document.getElementById('editor');
+        const ctx = canvas.getContext('2d');
+
+        fillCanvasWithWhite(); // Инициализация холста с белым фоном
+
+        let isDrawing = false;
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 0) {
+                isDrawing = true;
+                ctx.beginPath();
+                ctx.moveTo(e.offsetX, e.offsetY);
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                ctx.lineTo(e.offsetX, e.offsetY);
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseout', () => {
+            isDrawing = false;
+        });
+
+        const clearButton = document.getElementById('clearButton');
+        clearButton.addEventListener('click', () => {
+            fillCanvasWithWhite(); // Очистка холста с заполнением белым цветом
+            storImage()
+            guessResultLetterButton.textContent = "Значение"
+            localStorage.setItem('predict', "Значение");
+        });
+
+        document.getElementById('trainButton').addEventListener('click', function() {
+            $('#confirmModal').modal('show');
+        });
+
+        document.getElementById('confirmButton').addEventListener('click', function() {
+            $('#confirmModal').modal('hide');
+            console.log('Пользователь решил продолжить.');
+            deleteModel();
+            trainButton.textContent = "Обучаем";
+            guessResultLetterButton.textContent = "Wait";
+            localStorage.setItem('predict', "Wait");
+            saveTestImageAndPredict('Test.png');
+        });
+        //==================================
+
+        const checkLetterButton = document.getElementById('checkLetterButton');
+        checkLetterButton.addEventListener('click', () => {
+            guessResultLetterButton.textContent = "Wait"
+            localStorage.setItem('predict', "Wait");
+            saveTestImageAndPredict('Test.png');
+        });
+
+        const keyboardContainer = document.getElementById('keyboardContainer');
+
+        const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        alphabet.forEach(letter => {
+            const button = document.createElement('button');
+            button.textContent = letter;
+            button.className = 'keyboard-button';
+            keyboardContainer.appendChild(button);
+
+            button.addEventListener('click', () => {
+                console.log('click:');
+                if (isCanvasEmpty()) {
+                    alert('Холст пуст. Пожалуйста, нарисуйте что-нибудь перед сохранением.');
+                } else {
+                    saveImage(letter);
+                }
+            });
+        });
+        // ==== Count of files ========================
+
+        const countFilesButton = document.createElement('button');
+        countFilesButton.textContent = 'Статистика link';
+        countFilesButton.className = 'keyboard-button remember-button small-font-button';
+        keyboardContainer.appendChild(countFilesButton);
+
+
+        // Привязываем к кнопке событие клика
+        countFilesButton.addEventListener('click', () => {
+            // Открываем новую вкладку с указанной ссылкой
+            window.open('http://84.252.143.212:3000/d/f805afcb-cb0e-418b-9a8d-a9246cfcb82e/statistic?orgId=1&refresh=5s', '_blank');
+        });
+
+        const countFilesLabel = document.createElement('button');
+        countFilesLabel.textContent = '';
+        countFilesLabel.className = 'keyboard-button remember-button';
+        keyboardContainer.appendChild(countFilesLabel);
+
+
+        // Привязываем к кнопке событие клика
+        countFilesLabel.addEventListener('click', () => {
+            // Открываем новую вкладку с указанной ссылкой
+            window.open('http://84.252.143.212:3000/d/f805afcb-cb0e-418b-9a8d-a9246cfcb82e/statistic?orgId=1&refresh=5s', '_blank');
+        });
+        //=============================================
+
+    </script>
+</body>
+</html>
